@@ -1,0 +1,27 @@
+name: Push actions
+
+on:
+  push:
+    paths:
+      - 'ReturnTaskDirectlyAnalyzer/ReturnTaskDirectlyAnalyzer.csproj'
+    branches:
+      - master
+
+jobs:
+  nuget_push:
+    name: Pushes the updated package to NuGet.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v2
+
+      - name: Setup .NET 6
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: '6.0.x'
+
+      - name: Build project
+        run: dotnet build ReturnTaskDirectlyAnalyzer/ReturnTaskDirectlyAnalyzer.csproj -c Release
+
+      - name: Push package
+        run: dotnet nuget push ReturnTaskDirectlyAnalyzer/bin/Release/*.nupkg -k ${{ secrets.NUGET_KEY }} -s https://api.nuget.org/v3/index.json
