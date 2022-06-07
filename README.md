@@ -52,7 +52,7 @@ public Task<int> RunAsync() {
 }
 ```
 The analyzer will not report when a ``Task`` is awaited within a `try` or a `using` block.\
-To see a list of all supported cases, please have a look at the [ReturnTaskDirectlyTests.cs](https://github.com/CollinAlpert/ReturnTaskDirectlyTests/blob/master/ReturnTaskDirectlyAnalyzer.Tests/ReturnTaskDirectlyTests.cs) file.
+To see a list of all supported cases, please have a look at the [ReturnTaskDirectlyTests.cs](https://github.com/CollinAlpert/ReturnTaskDirectlyAnalyzer/blob/master/ReturnTaskDirectlyAnalyzer.Tests/ReturnTaskDirectlyTests.cs) file.
 
 ## Installation
 This analyzer is published in [NuGet](https://nuget.org/packages/ReturnTaskDirectlyAnalyzer) and can be installed using the following methods.\
