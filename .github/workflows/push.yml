@@ -1,6 +1,7 @@
 name: Push actions
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - 'ReturnTaskDirectlyAnalyzer/ReturnTaskDirectlyAnalyzer.csproj'
