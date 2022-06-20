@@ -490,6 +490,19 @@ public Task RunAsync() {
 }
 ";
 	
+	private const string MixedReturn = @"
+public async Task<int> RunAsync()
+{
+	var guid = Guid.NewGuid();
+	if (guid.ToString().StartsWith(""a""))
+	{
+		return await Task.FromResult(2);
+	}
+
+	return 6;
+}
+";
+	
 	private const string InUsingBlock = @"
 public async Task RunAsync() {
 	using (var _ = new MyDisposable()) {
@@ -532,6 +545,33 @@ public async Task RunAsync() {
 public async Task RunAsync() {
 	using var _ = new MyDisposable();
 	await DoSomethingAsync();
+}
+";
+	
+	private const string InNestedUsingStatement = @"
+public async Task RunAsync() {
+	var x = new Random().Next();
+	if(x == 3)
+	{
+		using var _ = new MyDisposable();
+		await DoSomethingAsync();
+		return;
+	}
+
+	await Task.CompletedTask;
+}
+";
+	
+	private const string InNestedUsingStatement2 = @"
+public async Task<int> RunAsync() {
+	var x = new Random().Next();
+	if(x == 3)
+	{
+		using var _ = new MyDisposable();
+		return await GetSomethingAsync();
+	}
+
+	return await Task.FromResult(5);
 }
 ";
 	
@@ -589,6 +629,20 @@ public async Task RunAsync() {
 	}
 
 	await DoSomethingAsync();
+}
+";
+	
+	private const string InTryBlockWithValueReturn = @"
+public async Task<int> RunAsync()
+{
+	try
+	{
+		return await GetSomethingAsync();
+	}
+	catch (Exception)
+	{
+		return 2;
+	}
 }
 ";
 	
@@ -713,21 +767,6 @@ public async Task RunAsync() {
 		return Verify.VerifyCodeFixAsync(source, expectedDiagnostic, fixedSource);
 	}
 
-	public Task<int> RunAsync() {
-		var guid = Guid.NewGuid().ToString();
-		if(guid.StartsWith("a")) {
-			return Task.FromResult(6);
-		}
-
-		if(guid.StartsWith("b")) {
-			return Task.FromResult(3);
-		}
-
-		return GetSomethingAsync();
-	}
-
-	private async Task<int> GetSomethingAsync() => 2;
-
 	[Theory]
 	[InlineData(NonTaskMethod)]
 	[InlineData(NonTaskMethod2)]
@@ -739,17 +778,21 @@ public async Task RunAsync() {
 	[InlineData(CorrectUsageWithMultipleStatements2)]
 	[InlineData(CorrectUsageWithMultipleReturnStatements)]
 	[InlineData(CorrectUsageWithMultipleReturnStatements2)]
+	[InlineData(MixedReturn)]
 	[InlineData(InUsingBlock)]
 	[InlineData(InUsingBlockWithReturn)]
 	[InlineData(InUsingBlockWithMultipleStatements)]
 	[InlineData(InUsingBlockWithMultipleStatementsWithReturn)]
 	[InlineData(InUsingStatement)]
+	[InlineData(InNestedUsingStatement)]
+	[InlineData(InNestedUsingStatement2)]
 	[InlineData(InAwaitUsingBlock)]
 	[InlineData(InAwaitUsingStatement)]
 	[InlineData(InTryBlock)]
 	[InlineData(InTryBlockWithReturn)]
 	[InlineData(InTryBlockWithMultipleStatements)]
 	[InlineData(InTryBlockWithMultipleStatementsWithReturn)]
+	[InlineData(InTryBlockWithValueReturn)]
 	[InlineData(MultipleAwaitExpressions)]
 	[InlineData(MultipleAwaitExpressionsNested)]
 	[InlineData(MultipleAwaitExpressionsNestedWithReturn)]

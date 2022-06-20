@@ -114,7 +114,8 @@ public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 			return (awaitExpression.IsNextStatementReturnStatement()
 			        || methodBody.Statements.Last() is ExpressionStatementSyntax expressionStatement && expressionStatement.Expression.Equals(awaitExpression))
 			       && !awaitExpression.HasParent(SyntaxKind.TryStatement)
-			       && !awaitExpression.HasParent(SyntaxKind.UsingStatement);
+			       && !awaitExpression.HasParent(SyntaxKind.UsingStatement)
+			       && !(awaitExpression.Parent?.Parent is BlockSyntax block && block.ContainsUsingStatement());
 		}
 
 		var awaitExpressions = methodBody.DescendantNodes().Where(node => node.IsKind(SyntaxKind.AwaitExpression)).ToList();
@@ -132,18 +133,24 @@ public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 	private static bool TryGetDiagnosticForTaskWithValueReturn(BlockSyntax methodBody, INamedTypeSymbol taskWithValueSymbol, ITypeSymbol returnTypeSymbol, [NotNullWhen(true)] out Diagnostic? diagnostic)
 	{
 		diagnostic = null;
-		if (taskWithValueSymbol.Equals(returnTypeSymbol.OriginalDefinition, SymbolEqualityComparer.Default))
+		if (!taskWithValueSymbol.Equals(returnTypeSymbol.OriginalDefinition, SymbolEqualityComparer.Default) || methodBody.ContainsUsingStatement())
 		{
-			var awaitExpressions = methodBody.DescendantNodes().OfType<AwaitExpressionSyntax>().ToList();
-			if (awaitExpressions.Count > 0
-			    && awaitExpressions.Any(expression => !expression.Parent.IsKind(SyntaxKind.ReturnStatement))
-			    || methodBody.ContainsUsingStatement())
-			{
-				return false;
-			}
+			return false;
+		}
 
-			var additionalLocations = awaitExpressions.Skip(1).Select(a => a.GetLocation());
-			diagnostic = Diagnostic.Create(DiagnosticDescriptors.ReturnTaskDirectly, awaitExpressions[0].GetLocation(), additionalLocations);
+		bool IsAwaitCandidateForOptimization(ReturnStatementSyntax returnStatement)
+		{
+			return returnStatement.Expression.IsKind(SyntaxKind.AwaitExpression) 
+			       && !returnStatement.HasParent(SyntaxKind.TryStatement) 
+			       && !returnStatement.HasParent(SyntaxKind.UsingStatement)
+			       && !(returnStatement.Parent is BlockSyntax block && block.ContainsUsingStatement());
+		}
+			
+		var returnStatements = methodBody.DescendantNodes().OfType<ReturnStatementSyntax>().ToList();
+		if (returnStatements.All(IsAwaitCandidateForOptimization))
+		{
+			var additionalLocations = returnStatements.Skip(1).Select(a => a.Expression!.GetLocation());
+			diagnostic = Diagnostic.Create(DiagnosticDescriptors.ReturnTaskDirectly, returnStatements[0].Expression!.GetLocation(), additionalLocations);
 
 			return true;
 		}
