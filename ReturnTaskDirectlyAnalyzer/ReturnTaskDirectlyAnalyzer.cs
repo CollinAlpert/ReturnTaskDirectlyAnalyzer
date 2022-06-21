@@ -75,14 +75,18 @@ public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 			return;
 		}
 		
-		if (body is not null && TryGetDiagnosticForTaskReturn(body, taskSymbol, returnTypeSymbol, out diagnostic))
+		if (taskSymbol.Equals(returnTypeSymbol, SymbolEqualityComparer.Default)
+			&& body is not null
+		    && TryGetDiagnosticForTaskReturn(body, out diagnostic))
 		{
 			context.ReportDiagnostic(diagnostic);
 
 			return;
 		}
 
-		if (body is not null && TryGetDiagnosticForTaskWithValueReturn(body, taskWithValueSymbol, returnTypeSymbol, out diagnostic))
+		if (taskWithValueSymbol.Equals(returnTypeSymbol.OriginalDefinition, SymbolEqualityComparer.Default)
+		    && body is not null
+		    && TryGetDiagnosticForTaskWithValueReturn(context.SemanticModel, body, returnTypeSymbol, out diagnostic))
 		{
 			context.ReportDiagnostic(diagnostic);
 		}
@@ -101,10 +105,10 @@ public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 		return false;
 	}
 
-	private static bool TryGetDiagnosticForTaskReturn(BlockSyntax methodBody, INamedTypeSymbol taskSymbol, ITypeSymbol returnTypeSymbol, [NotNullWhen(true)] out Diagnostic? diagnostic)
+	private static bool TryGetDiagnosticForTaskReturn(BlockSyntax methodBody, [NotNullWhen(true)] out Diagnostic? diagnostic)
 	{
 		diagnostic = null;
-		if (!taskSymbol.Equals(returnTypeSymbol, SymbolEqualityComparer.Default) || methodBody.ContainsUsingStatement())
+		if (methodBody.ContainsUsingStatement())
 		{
 			return false;
 		}
@@ -130,17 +134,18 @@ public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 		return false;
 	}
 	
-	private static bool TryGetDiagnosticForTaskWithValueReturn(BlockSyntax methodBody, INamedTypeSymbol taskWithValueSymbol, ITypeSymbol returnTypeSymbol, [NotNullWhen(true)] out Diagnostic? diagnostic)
+	private static bool TryGetDiagnosticForTaskWithValueReturn(SemanticModel semanticModel, BlockSyntax methodBody, ITypeSymbol returnTypeSymbol, [NotNullWhen(true)] out Diagnostic? diagnostic)
 	{
 		diagnostic = null;
-		if (!taskWithValueSymbol.Equals(returnTypeSymbol.OriginalDefinition, SymbolEqualityComparer.Default) || methodBody.ContainsUsingStatement())
+		if (methodBody.ContainsUsingStatement())
 		{
 			return false;
 		}
 
 		bool IsAwaitCandidateForOptimization(ReturnStatementSyntax returnStatement)
 		{
-			return returnStatement.Expression.IsKind(SyntaxKind.AwaitExpression) 
+			return returnStatement.Expression is AwaitExpressionSyntax awaitExpression
+			       && !HasCovariantReturn(semanticModel, awaitExpression, returnTypeSymbol)
 			       && !returnStatement.HasParent(SyntaxKind.TryStatement) 
 			       && !returnStatement.HasParent(SyntaxKind.UsingStatement)
 			       && !(returnStatement.Parent is BlockSyntax block && block.ContainsUsingStatement());
@@ -153,6 +158,18 @@ public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 			diagnostic = Diagnostic.Create(DiagnosticDescriptors.ReturnTaskDirectly, returnStatements[0].Expression!.GetLocation(), additionalLocations);
 
 			return true;
+		}
+
+		return false;
+	}
+
+	private static bool HasCovariantReturn(SemanticModel semanticModel, AwaitExpressionSyntax awaitExpression, ITypeSymbol returnTypeSymbol)
+	{
+		if (awaitExpression.Expression.IsKind(SyntaxKind.InvocationExpression))
+		{
+			var returnStatementTypeSymbol = (semanticModel.GetSymbolInfo(awaitExpression.Expression).Symbol as IMethodSymbol)?.ReturnType;
+			
+			return returnStatementTypeSymbol is not null && !returnTypeSymbol.Equals(returnStatementTypeSymbol, SymbolEqualityComparer.Default);
 		}
 
 		return false;

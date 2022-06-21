@@ -1,4 +1,3 @@
-using System;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Testing;
@@ -13,11 +12,14 @@ public class ReturnTaskDirectlyTests
 {
 	private const string Scaffold = @"
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace UnitTests;
 
 public class Test {{
+	private readonly DataService _dataService;
+ 
 	{0}
 
 	public Task DoSomethingAsync() {{
@@ -26,6 +28,10 @@ public class Test {{
 
 	public Task<int> GetSomethingAsync() {{
 		return Task.FromResult(2);
+	}}
+
+	public Task<List<int>> GetListAsync() {{
+		return Task.FromResult(new List<int>() {{ 1, 2, 3 }});
 	}}
 
 	public Task Accept(Func<Task> func) {{
@@ -44,6 +50,12 @@ public class MyDisposable : IDisposable, IAsyncDisposable {{
 	public ValueTask DisposeAsync() {{
 		return default;
 	}} 
+}}
+
+public class DataService {{
+	public Task<List<int>> GetListAsync() {{
+		return Task.FromResult(new List<int>() {{ 1, 2, 3 }});
+	}}
 }}
 ";
 
@@ -246,33 +258,6 @@ private Task RunAsync()
 }
 ";
 
-	private const string WithMultipleAwaits2 = @"
-private async Task<int> RunAsync()
-{
-	var x = new Random().Next();
-	if(x == 3)
-	{
-		var value = {|#0:await GetSomethingAsync()|};
-		return value;
-	}
-
-	return {|#1:await Task.FromResult(1000)|};
-}
-";
-	
-	private const string WithMultipleAwaitsFixed2 = @"
-private Task RunAsync()
-{
-	var x = new Random().Next();
-	if(x == 3)
-	{
-		return DoSomethingAsync();
-	}
-
-	return Task.Delay(1000);
-}
-";
-	
 	private const string LocalFunction = @"
 private Task RunAsync()
 {
@@ -316,6 +301,34 @@ private Task RunAsync()
 	if(x == 3)
 	{
 		return DoSomethingAsync();
+	}
+
+	return Task.Delay(1000);
+}
+";
+	
+	private const string WithUnrelatedUsingStatement = @"
+private async Task RunAsync()
+{
+	var x = new Random().Next();
+	if(x == 3)
+	{
+		using var _ = new MyDisposable();
+		Console.WriteLine(2);
+	}
+
+	{|#0:await Task.Delay(1000)|};
+}
+";
+	
+	private const string WithUnrelatedUsingStatementFixed = @"
+private Task RunAsync()
+{
+	var x = new Random().Next();
+	if(x == 3)
+	{
+		using var _ = new MyDisposable();
+		Console.WriteLine(2);
 	}
 
 	return Task.Delay(1000);
@@ -688,6 +701,18 @@ public async Task RunAsync() {
 	}
 }
 ";
+	
+	private const string CovariantReturnType = @"
+public async Task<IEnumerable<int>> RunAsync() {
+	return await GetListAsync();
+}
+";
+	
+	private const string CovariantReturnTypeWithMethodCall = @"
+public async Task<IEnumerable<int>> RunAsync() {
+	return await _dataService.GetListAsync();
+}
+";
 
 	private const string CorrectLambdaExpression = @"
 public void Run() {
@@ -747,9 +772,9 @@ public async Task RunAsync() {
 	[InlineData(WithNonRelevantUsingBlock, WithNonRelevantUsingBlockFixed, 2)]
 	[InlineData(WithNonRelevantTryBlock, WithNonRelevantTryBlockFixed)]
 	[InlineData(WithMultipleAwaits, WithMultipleAwaitsFixed, 2)]
-	[InlineData(WithMultipleAwaits2, WithMultipleAwaitsFixed2, 2, Skip = "Too complex for now.")]
 	[InlineData(LocalFunction, LocalFunctionFixed)]
 	[InlineData(WithConfigureAwait, WithConfigureAwaitFixed, 2)]
+	[InlineData(WithUnrelatedUsingStatement, WithUnrelatedUsingStatementFixed)]
 	[InlineData(LambdaExpression, LambdaExpressionFixed)]
 	[InlineData(LambdaExpressionWithReturn, LambdaExpressionWithReturnFixed)]
 	[InlineData(LambdaBlock, LambdaBlockFixed, 2)]
@@ -797,6 +822,8 @@ public async Task RunAsync() {
 	[InlineData(MultipleAwaitExpressionsNested)]
 	[InlineData(MultipleAwaitExpressionsNestedWithReturn)]
 	[InlineData(MultipleAwaitExpressionsInLoop)]
+	[InlineData(CovariantReturnType)]
+	[InlineData(CovariantReturnTypeWithMethodCall)]
 	[InlineData(CorrectLambdaExpression)]
 	[InlineData(CorrectLambdaExpression2)]
 	[InlineData(CorrectLambdaExpressionWithReturn)]
