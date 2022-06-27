@@ -13,6 +13,7 @@ public class ReturnTaskDirectlyTests
 	private const string Scaffold = @"
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace UnitTests;
@@ -516,6 +517,18 @@ public async Task<int> RunAsync()
 }
 ";
 	
+	private const string MixedAwaits = @"
+private async Task<int> RunAsync()
+{
+    foreach (var i in Enumerable.Range(0, 10))
+    {
+        var result = await Task.FromResult(i);
+    }
+
+    return await GetSomethingAsync();
+}
+";
+	
 	private const string InUsingBlock = @"
 public async Task RunAsync() {
 	using (var _ = new MyDisposable()) {
@@ -804,6 +817,7 @@ public async Task RunAsync() {
 	[InlineData(CorrectUsageWithMultipleReturnStatements)]
 	[InlineData(CorrectUsageWithMultipleReturnStatements2)]
 	[InlineData(MixedReturn)]
+	[InlineData(MixedAwaits)]
 	[InlineData(InUsingBlock)]
 	[InlineData(InUsingBlockWithReturn)]
 	[InlineData(InUsingBlockWithMultipleStatements)]

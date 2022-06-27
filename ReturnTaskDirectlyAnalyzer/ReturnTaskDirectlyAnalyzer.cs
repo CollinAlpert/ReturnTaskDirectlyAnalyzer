@@ -142,20 +142,21 @@ public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 			return false;
 		}
 
-		bool IsAwaitCandidateForOptimization(ReturnStatementSyntax returnStatement)
+		bool IsAwaitCandidateForOptimization(AwaitExpressionSyntax awaitExpression)
 		{
-			return returnStatement.Expression is AwaitExpressionSyntax awaitExpression
+			return awaitExpression.Parent is ReturnStatementSyntax returnStatement
 			       && !HasCovariantReturn(semanticModel, awaitExpression, returnTypeSymbol)
 			       && !returnStatement.HasParent(SyntaxKind.TryStatement) 
 			       && !returnStatement.HasParent(SyntaxKind.UsingStatement)
 			       && !(returnStatement.Parent is BlockSyntax block && block.ContainsUsingStatement());
 		}
 			
-		var returnStatements = methodBody.DescendantNodes().OfType<ReturnStatementSyntax>().ToList();
-		if (returnStatements.All(IsAwaitCandidateForOptimization))
+		var awaitExpressions = methodBody.DescendantNodes().OfType<AwaitExpressionSyntax>().ToList();
+		var returnStatements = methodBody.DescendantNodes().OfType<ReturnStatementSyntax>();
+		if (returnStatements.All(r => r.Expression.IsKind(SyntaxKind.AwaitExpression)) && awaitExpressions.All(IsAwaitCandidateForOptimization))
 		{
-			var additionalLocations = returnStatements.Skip(1).Select(a => a.Expression!.GetLocation());
-			diagnostic = Diagnostic.Create(DiagnosticDescriptors.ReturnTaskDirectly, returnStatements[0].Expression!.GetLocation(), additionalLocations);
+			var additionalLocations = awaitExpressions.Skip(1).Select(a => a.GetLocation());
+			diagnostic = Diagnostic.Create(DiagnosticDescriptors.ReturnTaskDirectly, awaitExpressions[0].GetLocation(), additionalLocations);
 
 			return true;
 		}
