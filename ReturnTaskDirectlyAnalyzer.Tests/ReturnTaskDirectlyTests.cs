@@ -259,6 +259,49 @@ private Task RunAsync()
 }
 ";
 
+	private const string WithLocalFunction = @"
+private async Task RunAsync()
+{
+	var x = new Random().Next();
+	if(x == 3)
+	{
+		{|#0:await DoSomethingAsync()|};
+		return;
+	}
+
+	async Task LocalFuncAsync() {
+		if(x == 4) {
+			await Task.Delay(500);
+		}
+
+		await Task.CompletedTask;
+	}
+
+	{|#1:await LocalFuncAsync()|};
+}
+";
+
+	private const string WithLocalFunctionFixed = @"
+private Task RunAsync()
+{
+	var x = new Random().Next();
+	if(x == 3)
+	{
+		return DoSomethingAsync();
+	}
+
+	async Task LocalFuncAsync() {
+		if(x == 4) {
+			await Task.Delay(500);
+		}
+
+		await Task.CompletedTask;
+	}
+
+	return LocalFuncAsync();
+}
+";
+
 	private const string LocalFunction = @"
 private Task RunAsync()
 {
@@ -785,6 +828,7 @@ public async Task RunAsync() {
 	[InlineData(WithNonRelevantUsingBlock, WithNonRelevantUsingBlockFixed, 2)]
 	[InlineData(WithNonRelevantTryBlock, WithNonRelevantTryBlockFixed)]
 	[InlineData(WithMultipleAwaits, WithMultipleAwaitsFixed, 2)]
+	[InlineData(WithLocalFunction, WithLocalFunctionFixed, 2)]
 	[InlineData(LocalFunction, LocalFunctionFixed)]
 	[InlineData(WithConfigureAwait, WithConfigureAwaitFixed, 2)]
 	[InlineData(WithUnrelatedUsingStatement, WithUnrelatedUsingStatementFixed)]

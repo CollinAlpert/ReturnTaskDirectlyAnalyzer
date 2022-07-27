@@ -122,7 +122,9 @@ public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 			       && !(awaitExpression.Parent?.Parent is BlockSyntax block && block.ContainsUsingStatement());
 		}
 
-		var awaitExpressions = methodBody.DescendantNodes().Where(node => node.IsKind(SyntaxKind.AwaitExpression)).ToList();
+		var awaitExpressions = methodBody.DescendantNodes(node => !node.IsKind(SyntaxKind.LocalFunctionStatement))
+			.Where(node => node.IsKind(SyntaxKind.AwaitExpression))
+			.ToList();
 		if (awaitExpressions.All(IsAwaitCandidateForOptimization))
 		{
 			var additionalLocations = awaitExpressions.Skip(1).Select(a => a.GetLocation());
@@ -151,8 +153,10 @@ public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 			       && !(returnStatement.Parent is BlockSyntax block && block.ContainsUsingStatement());
 		}
 			
-		var awaitExpressions = methodBody.DescendantNodes().OfType<AwaitExpressionSyntax>().ToList();
-		var returnStatements = methodBody.DescendantNodes().OfType<ReturnStatementSyntax>();
+		var awaitExpressions = methodBody.DescendantNodes(node => !node.IsKind(SyntaxKind.LocalFunctionStatement))
+			.OfType<AwaitExpressionSyntax>()
+			.ToList();
+		var returnStatements = methodBody.DescendantNodes(node => !node.IsKind(SyntaxKind.LocalFunctionStatement)).OfType<ReturnStatementSyntax>();
 		if (returnStatements.All(r => r.Expression.IsKind(SyntaxKind.AwaitExpression)) && awaitExpressions.All(IsAwaitCandidateForOptimization))
 		{
 			var additionalLocations = awaitExpressions.Skip(1).Select(a => a.GetLocation());
