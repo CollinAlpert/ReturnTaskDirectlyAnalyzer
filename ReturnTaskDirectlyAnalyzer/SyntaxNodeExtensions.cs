@@ -4,7 +4,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace ReturnTaskDirectlyAnalyzer;
 
-public static class SyntaxNodeExtensions
+internal static class SyntaxNodeExtensions
 {
 	public static bool ContainsUsingStatement(this BlockSyntax block)
 	{

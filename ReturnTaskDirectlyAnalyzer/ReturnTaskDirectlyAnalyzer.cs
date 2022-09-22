@@ -8,7 +8,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 namespace ReturnTaskDirectlyAnalyzer;
 
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
+internal class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 {
 	public override void Initialize(AnalysisContext context)
 	{
@@ -26,7 +26,9 @@ public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 	{
 		var taskSymbol = context.Compilation.GetTypeByMetadataName(typeof(Task).FullName!)!;
 		var taskWithValueSymbol = context.Compilation.GetTypeByMetadataName(typeof(Task<>).FullName!)!;
-		
+		var valueTaskSymbol = context.Compilation.GetTypeByMetadataName(typeof(ValueTask).FullName!)!;
+		var valueTaskWithValueSymbol = context.Compilation.GetTypeByMetadataName(typeof(ValueTask<>).FullName!)!;
+
 		var node = context.Node;
 
 		static bool IsMethodValid(SyntaxNode node, [NotNullWhen(true)] IMethodSymbol? methodSymbol)
@@ -36,29 +38,30 @@ public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 			       && !methodSymbol.ReturnsVoid
 			       && node.DescendantNodes().Any(n => n.IsKind(SyntaxKind.AwaitExpression));
 		}
-		
+
 		BlockSyntax? body;
 		ExpressionSyntax? expressionBody;
 		ITypeSymbol returnTypeSymbol;
 		if (node.IsKind(SyntaxKind.MethodDeclaration) || node.IsKind(SyntaxKind.LocalFunctionStatement))
 		{
-			var methodSymbol = (IMethodSymbol?) context.SemanticModel.GetDeclaredSymbol(node);
+			var methodSymbol = (IMethodSymbol?)context.SemanticModel.GetDeclaredSymbol(node);
 			if (!IsMethodValid(node, methodSymbol))
 			{
 				return;
 			}
-			
+
 			body = (node as MethodDeclarationSyntax)?.Body ?? (node as LocalFunctionStatementSyntax)?.Body;
 			expressionBody = (node as MethodDeclarationSyntax)?.ExpressionBody?.Expression ?? (node as LocalFunctionStatementSyntax)?.ExpressionBody?.Expression;
 			returnTypeSymbol = methodSymbol.ReturnType;
-		} else if (context.Node.IsKind(SyntaxKind.ParenthesizedLambdaExpression))
+		}
+		else if (context.Node.IsKind(SyntaxKind.ParenthesizedLambdaExpression))
 		{
-			var lambdaSymbol = (IMethodSymbol?) context.SemanticModel.GetSymbolInfo(node).Symbol;
+			var lambdaSymbol = (IMethodSymbol?)context.SemanticModel.GetSymbolInfo(node).Symbol;
 			if (!IsMethodValid(node, lambdaSymbol))
 			{
 				return;
 			}
-			
+
 			body = (node as ParenthesizedLambdaExpressionSyntax)!.Block;
 			expressionBody = (node as ParenthesizedLambdaExpressionSyntax)!.ExpressionBody;
 			returnTypeSymbol = lambdaSymbol.ReturnType;
@@ -67,35 +70,38 @@ public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 		{
 			return;
 		}
-		
-		if (expressionBody is not null && TryGetDiagnosticForExpressionBody(expressionBody, out var diagnostic))
-		{
-			context.ReportDiagnostic(diagnostic);
 
-			return;
-		}
-		
-		if (taskSymbol.Equals(returnTypeSymbol, SymbolEqualityComparer.Default)
-			&& body is not null
-		    && TryGetDiagnosticForTaskReturn(body, out diagnostic))
+		var semanticModel = context.SemanticModel;
+		if (expressionBody is not null && TryGetDiagnosticForExpressionBody(semanticModel, expressionBody, returnTypeSymbol, out var diagnostic))
 		{
 			context.ReportDiagnostic(diagnostic);
 
 			return;
 		}
 
-		if (taskWithValueSymbol.Equals(returnTypeSymbol.OriginalDefinition, SymbolEqualityComparer.Default)
+		if ((taskSymbol.Equals(returnTypeSymbol, SymbolEqualityComparer.Default)
+		     || valueTaskSymbol.Equals(returnTypeSymbol, SymbolEqualityComparer.Default))
 		    && body is not null
-		    && TryGetDiagnosticForTaskWithValueReturn(context.SemanticModel, body, returnTypeSymbol, out diagnostic))
+		    && TryGetDiagnosticForTaskReturn(semanticModel, body, returnTypeSymbol, out diagnostic))
+		{
+			context.ReportDiagnostic(diagnostic);
+
+			return;
+		}
+
+		if ((taskWithValueSymbol.Equals(returnTypeSymbol.OriginalDefinition, SymbolEqualityComparer.Default)
+		     || valueTaskWithValueSymbol.Equals(returnTypeSymbol.OriginalDefinition, SymbolEqualityComparer.Default))
+		    && body is not null
+		    && TryGetDiagnosticForTaskWithValueReturn(semanticModel, body, returnTypeSymbol, out diagnostic))
 		{
 			context.ReportDiagnostic(diagnostic);
 		}
 	}
 
-	private static bool TryGetDiagnosticForExpressionBody(ExpressionSyntax expressionBody, [NotNullWhen(true)] out Diagnostic? diagnostic)
+	private static bool TryGetDiagnosticForExpressionBody(SemanticModel semanticModel, ExpressionSyntax expressionBody, ITypeSymbol returnTypeSymbol, [NotNullWhen(true)] out Diagnostic? diagnostic)
 	{
 		diagnostic = null;
-		if (expressionBody.IsKind(SyntaxKind.AwaitExpression))
+		if (expressionBody is AwaitExpressionSyntax awaitExpression && !HasCovariantReturn(semanticModel, awaitExpression, returnTypeSymbol))
 		{
 			diagnostic = Diagnostic.Create(DiagnosticDescriptors.ReturnTaskDirectly, expressionBody.GetLocation());
 
@@ -105,25 +111,26 @@ public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 		return false;
 	}
 
-	private static bool TryGetDiagnosticForTaskReturn(BlockSyntax methodBody, [NotNullWhen(true)] out Diagnostic? diagnostic)
+	private static bool TryGetDiagnosticForTaskReturn(SemanticModel semanticModel, BlockSyntax methodBody, ITypeSymbol returnTypeSymbol, [NotNullWhen(true)] out Diagnostic? diagnostic)
 	{
 		diagnostic = null;
 		if (methodBody.ContainsUsingStatement())
 		{
 			return false;
 		}
-		
-		bool IsAwaitCandidateForOptimization(SyntaxNode awaitExpression)
+
+		bool IsAwaitCandidateForOptimization(AwaitExpressionSyntax awaitExpression)
 		{
 			return (awaitExpression.IsNextStatementReturnStatement()
 			        || methodBody.Statements.Last() is ExpressionStatementSyntax expressionStatement && expressionStatement.Expression.Equals(awaitExpression))
+			       && !HasCovariantReturn(semanticModel, awaitExpression, returnTypeSymbol)
 			       && !awaitExpression.HasParent(SyntaxKind.TryStatement)
 			       && !awaitExpression.HasParent(SyntaxKind.UsingStatement)
 			       && !(awaitExpression.Parent?.Parent is BlockSyntax block && block.ContainsUsingStatement());
 		}
 
 		var awaitExpressions = methodBody.DescendantNodes(node => !node.IsKind(SyntaxKind.LocalFunctionStatement))
-			.Where(node => node.IsKind(SyntaxKind.AwaitExpression))
+			.OfType<AwaitExpressionSyntax>()
 			.ToList();
 		if (awaitExpressions.All(IsAwaitCandidateForOptimization))
 		{
@@ -135,7 +142,7 @@ public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 
 		return false;
 	}
-	
+
 	private static bool TryGetDiagnosticForTaskWithValueReturn(SemanticModel semanticModel, BlockSyntax methodBody, ITypeSymbol returnTypeSymbol, [NotNullWhen(true)] out Diagnostic? diagnostic)
 	{
 		diagnostic = null;
@@ -148,11 +155,11 @@ public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 		{
 			return awaitExpression.Parent is ReturnStatementSyntax returnStatement
 			       && !HasCovariantReturn(semanticModel, awaitExpression, returnTypeSymbol)
-			       && !returnStatement.HasParent(SyntaxKind.TryStatement) 
+			       && !returnStatement.HasParent(SyntaxKind.TryStatement)
 			       && !returnStatement.HasParent(SyntaxKind.UsingStatement)
 			       && !(returnStatement.Parent is BlockSyntax block && block.ContainsUsingStatement());
 		}
-			
+
 		var awaitExpressions = methodBody.DescendantNodes(node => !node.IsKind(SyntaxKind.LocalFunctionStatement))
 			.OfType<AwaitExpressionSyntax>()
 			.ToList();
@@ -170,14 +177,25 @@ public class ReturnTaskDirectlyAnalyzer : DiagnosticAnalyzer
 
 	private static bool HasCovariantReturn(SemanticModel semanticModel, AwaitExpressionSyntax awaitExpression, ITypeSymbol returnTypeSymbol)
 	{
-		if (awaitExpression.Expression.IsKind(SyntaxKind.InvocationExpression))
+		if (awaitExpression.Expression is InvocationExpressionSyntax invocation)
 		{
-			var returnStatementTypeSymbol = (semanticModel.GetSymbolInfo(awaitExpression.Expression).Symbol as IMethodSymbol)?.ReturnType;
-			
-			return returnStatementTypeSymbol is not null && !returnTypeSymbol.Equals(returnStatementTypeSymbol, SymbolEqualityComparer.Default);
+			return HasCovariantReturn(semanticModel, invocation, returnTypeSymbol);
 		}
 
 		return false;
+	}
+
+	private static bool HasCovariantReturn(SemanticModel semanticModel, InvocationExpressionSyntax invocation, ITypeSymbol returnTypeSymbol)
+	{
+		var methodSymbol = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+		if (methodSymbol?.Name == "ConfigureAwait" && invocation.Expression is MemberAccessExpressionSyntax { Expression: InvocationExpressionSyntax memberInvocation })
+		{
+			return HasCovariantReturn(semanticModel, memberInvocation, returnTypeSymbol);
+		}
+
+		var returnStatementTypeSymbol = methodSymbol?.ReturnType;
+
+		return returnStatementTypeSymbol is not null && !returnTypeSymbol.Equals(returnStatementTypeSymbol, SymbolEqualityComparer.Default);
 	}
 
 	public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } = ImmutableArray.Create(DiagnosticDescriptors.ReturnTaskDirectly);

@@ -2,7 +2,7 @@
 
 namespace ReturnTaskDirectlyAnalyzer;
 
-public static class DiagnosticDescriptors
+internal static class DiagnosticDescriptors
 {
 	public static readonly DiagnosticDescriptor ReturnTaskDirectly = new(
 		"RTD001",

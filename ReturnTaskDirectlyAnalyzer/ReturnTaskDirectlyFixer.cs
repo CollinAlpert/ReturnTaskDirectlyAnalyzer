@@ -10,7 +10,7 @@ using Microsoft.CodeAnalysis.Text;
 namespace ReturnTaskDirectlyAnalyzer;
 
 [ExportCodeFixProvider(LanguageNames.CSharp)]
-public class ReturnTaskDirectlyFixer : CodeFixProvider
+internal class ReturnTaskDirectlyFixer : CodeFixProvider
 {
 	public override Task RegisterCodeFixesAsync(CodeFixContext context)
 	{
