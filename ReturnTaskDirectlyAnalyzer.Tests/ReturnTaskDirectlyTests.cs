@@ -1,4 +1,3 @@
-using System.Threading.Tasks;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Testing;
 using Microsoft.CodeAnalysis.Testing.Verifiers;
@@ -20,7 +19,7 @@ namespace UnitTests;
 
 public class Test {{
 	private readonly DataService _dataService;
- 
+
 	{0}
 
 	public Task DoSomethingAsync() {{
@@ -826,7 +825,7 @@ public async Task RunAsync() {
 	[InlineData(LambdaExpressionWithReturn, LambdaExpressionWithReturnFixed)]
 	[InlineData(LambdaBlock, LambdaBlockFixed, 2)]
 	[InlineData(LambdaBlockWithReturn, LambdaBlockWithReturnFixed, 2)]
-	public Task ShouldRaise(string method, string fixedMethod, int diagnosticLocations = 1)
+	public Task ShouldRaiseAsync(string method, string fixedMethod, int diagnosticLocations = 1)
 	{
 		var source = string.Format(Scaffold, method);
 		var fixedSource = string.Format(Scaffold, fixedMethod);
@@ -883,7 +882,7 @@ public async Task RunAsync() {
 	[InlineData(CorrectLambdaExpressionWithReturn2)]
 	[InlineData(CorrectLambdaBlock)]
 	[InlineData(CorrectLambdaBlockWithReturn)]
-	public Task ShouldNotRaise(string method)
+	public Task ShouldNotRaiseAsync(string method)
 	{
 		var source = string.Format(Scaffold, method);
 

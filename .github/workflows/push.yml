@@ -24,5 +24,8 @@ jobs:
       - name: Build project
         run: dotnet build ReturnTaskDirectlyAnalyzer/ReturnTaskDirectlyAnalyzer.csproj -c Release
 
+      - name: Run tests
+        run: dotnet test -c Release
+
       - name: Push package
         run: dotnet nuget push ReturnTaskDirectlyAnalyzer/bin/Release/*.nupkg -k ${{ secrets.NUGET_KEY }} -s https://api.nuget.org/v3/index.json
